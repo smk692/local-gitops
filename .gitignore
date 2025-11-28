@@ -1,9 +1,5 @@
 # Sensitive configuration files
 secrets/
-
-# Local tool configurations
-.claude/
-.serena/
 *.secret.yaml
 *.secret.yml
 *-secrets.yaml

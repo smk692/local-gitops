@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/sonmingi/.claude/commands/**)",
+      "WebSearch",
+      "Bash(chmod:*)",
+      "Bash(./deploy-kafka.sh:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(./install-k3s.sh:*)",
+      "Bash(kubectl get:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(helm uninstall:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(k3d cluster:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker info:*)",
+      "Bash(./deploy.sh)",
+      "Bash(./scripts/install-k3s.sh:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(tree:*)",
+      "mcp__serena__initial_instructions",
+      "mcp__serena__list_memories",
+      "mcp__serena__activate_project",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__list_dir"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
