@@ -821,3 +821,80 @@ data:
   my-dashboard.json: |
     { ... dashboard JSON ... }
 ```
+
+## Code Review Workflow
+
+### 개요
+
+20년 경력 시니어 DevOps 엔지니어 수준의 6도메인 종합 코드 리뷰 시스템.
+
+**6개 리뷰 도메인**:
+1. **Architecture** - 네임스페이스, Phase 배포, Helm 구조
+2. **Performance** - ARM64 최적화, 메모리 프로파일 (Mac Mini M4)
+3. **Security** - Secret 템플릿, RBAC, SecurityContext
+4. **Quality** - Shellcheck, YAML lint, 문서화
+5. **Testing** - 검증 함수, Health check, dry-run
+6. **Operations** - 모니터링, 로깅, 체크포인트
+
+### GitHub Actions 워크플로우
+
+| 워크플로우 | 트리거 | 용도 |
+|-----------|--------|------|
+| `claude-code-review.yml` | PR 생성/업데이트 | 6도메인 자동 리뷰 |
+| `claude.yml` | `@claude` 멘션 | 대화형 어시스턴트 |
+| `infra-lint.yml` | Push/PR | 자동 린트 검사 |
+
+### 사용 방법
+
+**자동 PR 리뷰**:
+PR 생성 시 자동으로 6도메인 리뷰 실행
+
+**수동 리뷰 요청**:
+```
+@claude /review
+@claude fix this
+@claude explain this change
+```
+
+**로컬 리뷰**:
+```bash
+/sc:review                           # 전체 리뷰
+/sc:review --domain security         # 보안 도메인만
+/sc:review scripts/ --focus bash     # Bash 스크립트만
+/sc:review --depth quick             # 빠른 검사
+```
+
+### 리뷰 체크리스트
+
+#### Critical (머지 전 필수 수정)
+
+**Architecture**:
+- [ ] 네임스페이스 격리 (infra/database/monitoring/backend/frontend)
+- [ ] Chart 버전 고정 (예: kafka 31.5.0)
+- [ ] Phase 함수 멱등성
+
+**Performance (Mac Mini M4)**:
+- [ ] ARM64 이미지 명시 (x86 에뮬레이션 금지)
+- [ ] 프로파일별 메모리 제한
+
+**Security**:
+- [ ] YAML/스크립트에 평문 비밀번호 없음
+- [ ] Secret 템플릿 사용
+
+**Quality**:
+- [ ] Shellcheck 통과
+- [ ] YAML 문법 유효
+
+#### Important (권장 수정)
+
+- 라이브러리 sourcing 확인 (common.sh, validation.sh)
+- `set -e` 에러 종료 설정
+- Health probes 설정
+
+### 심각도 분류
+
+| 심각도 | 설명 | 예시 |
+|--------|------|------|
+| **Critical** | 머지 차단 | 하드코딩된 비밀번호, ARM64 미지원 이미지 |
+| **Important** | 권장 수정 | 누락된 에러 핸들링, 비효율적 패턴 |
+| **Suggested** | 개선 권장 | 코드 스타일, 문서화 개선 |

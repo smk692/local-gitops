@@ -1,0 +1,162 @@
+name: Infrastructure Linting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**/*.sh"
+      - "helm/**/*.yaml"
+      - "k8s/**/*.yaml"
+      - "k3d/**/*.yaml"
+  pull_request:
+    paths:
+      - "scripts/**/*.sh"
+      - "helm/**/*.yaml"
+      - "k8s/**/*.yaml"
+      - "k3d/**/*.yaml"
+
+jobs:
+  # Job 1: Detect changed files
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      scripts: ${{ steps.filter.outputs.scripts }}
+      kubernetes: ${{ steps.filter.outputs.kubernetes }}
+      helm: ${{ steps.filter.outputs.helm }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            scripts:
+              - 'scripts/**/*.sh'
+            kubernetes:
+              - 'k8s/**/*.yaml'
+              - 'k3d/**/*.yaml'
+            helm:
+              - 'helm/**/*.yaml'
+
+  # Job 2: Shellcheck for Bash scripts
+  shellcheck:
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          severity: warning
+          format: gcc
+        env:
+          SHELLCHECK_OPTS: -e SC1091 -e SC2034  # Ignore source and unused var warnings
+
+  # Job 3: YAML Lint
+  yamllint:
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true' || needs.changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Create yamllint config
+        run: |
+          cat > .yamllint.yml << 'EOF'
+          extends: default
+          rules:
+            line-length:
+              max: 200
+              level: warning
+            truthy:
+              check-keys: false
+            comments:
+              min-spaces-from-content: 1
+            indentation:
+              spaces: 2
+              indent-sequences: consistent
+          EOF
+
+      - name: Lint Kubernetes manifests
+        if: needs.changes.outputs.kubernetes == 'true'
+        run: yamllint -c .yamllint.yml k8s/ k3d/ || true
+
+      - name: Lint Helm values
+        if: needs.changes.outputs.helm == 'true'
+        run: yamllint -c .yamllint.yml helm/ || true
+
+  # Job 4: Kubernetes manifest validation
+  kubernetes-validate:
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Validate Kubernetes manifests (dry-run)
+        run: |
+          echo "Validating Kubernetes manifests..."
+
+          # Find all YAML files in k8s directory
+          find k8s -name "*.yaml" -type f | while read -r file; do
+            echo "Validating: $file"
+            # Use --dry-run=client for basic validation without cluster
+            kubectl apply --dry-run=client -f "$file" 2>&1 || echo "⚠️ Warning: $file has validation issues"
+          done
+        continue-on-error: true
+
+  # Job 5: Helm values validation
+  helm-validate:
+    needs: changes
+    if: needs.changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Validate Helm values syntax
+        run: |
+          echo "Validating Helm values files..."
+
+          # Check YAML syntax for all helm values
+          for file in helm/*.yaml; do
+            echo "Checking: $file"
+            # Use yq to validate YAML syntax
+            if command -v yq &> /dev/null; then
+              yq e '.' "$file" > /dev/null 2>&1 || echo "⚠️ Invalid YAML: $file"
+            else
+              # Fallback: use python yaml module
+              python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>&1 || echo "⚠️ Invalid YAML: $file"
+            fi
+          done
+
+  # Job 6: Summary
+  lint-summary:
+    needs: [shellcheck, yamllint, kubernetes-validate, helm-validate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint Summary
+        run: |
+          echo "## Infrastructure Lint Summary"
+          echo ""
+          echo "| Check | Status |"
+          echo "|-------|--------|"
+          echo "| ShellCheck | ${{ needs.shellcheck.result || 'skipped' }} |"
+          echo "| YAML Lint | ${{ needs.yamllint.result || 'skipped' }} |"
+          echo "| K8s Validate | ${{ needs.kubernetes-validate.result || 'skipped' }} |"
+          echo "| Helm Validate | ${{ needs.helm-validate.result || 'skipped' }} |"

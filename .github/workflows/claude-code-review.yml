@@ -1,35 +1,32 @@
-name: Claude Code Review
+name: Claude Code Review - Infrastructure
 
 on:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    paths:
+      - "scripts/**/*.sh"
+      - "helm/**/*.yaml"
+      - "k8s/**/*.yaml"
+      - "k3d/**/*.yaml"
+      - "secrets/**/*.yaml"
+      - "secrets/**/*.tpl"
+      - "CLAUDE.md"
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write        # read → write: 브랜치 생성, 파일 수정
+      pull-requests: write   # read → write: PR 생성, 코멘트 작성
+      issues: write          # 신규 추가: 이슈 응답
       id-token: write
+      actions: read          # CI 결과 읽기
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0  # 전체 히스토리 (diff 분석용)
 
       - name: Run Claude Code Review
         id: claude-review
@@ -40,18 +37,55 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            You are a 20-year senior DevOps engineer reviewing this Mac Mini M4 Kubernetes infrastructure PR.
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            **CRITICAL**: First read CLAUDE.md for project context, conventions, and known issues.
+
+            ## Review Instructions
+            Perform a comprehensive review across these 6 domains:
+
+            ### 1. Architecture Review
+            - Namespace separation and boundaries (infra/database/monitoring/backend/frontend)
+            - Phase-based deployment consistency
+            - Chart version compatibility (e.g., kafka 31.5.0 for Kafka 3.9.x)
+            - Resource profile usage (8gb/16gb/32gb)
+            - Library sourcing patterns (common.sh, validation.sh, k3d.sh)
+
+            ### 2. Performance Review (Mac Mini M4 Focus)
+            - ARM64 image optimization (no x86 emulation)
+            - Memory allocations appropriate for profile
+            - CPU requests reasonable for M4 (10 cores)
+            - No busy-wait loops (use kubectl wait)
+
+            ### 3. Security Review
+            - No hardcoded credentials in YAML/scripts
+            - Secret template usage (secrets/templates/)
+            - SecurityContext definitions (runAsNonRoot)
+            - .env files not committed
+
+            ### 4. Code Quality Review
+            - Bash scripts: shellcheck compliance, set -e, proper shebang
+            - YAML: consistent formatting, valid syntax
+            - Documentation: CLAUDE.md accuracy
+
+            ### 5. Testing Review
+            - Validation functions present (run_preflight_checks)
+            - Health check coverage
+            - kubectl --dry-run compatibility
+
+            ### 6. Operations Review
+            - Monitoring/logging configuration (Prometheus, Loki, Grafana)
+            - Checkpoint/resume capability in deploy scripts
+            - Health probes (liveness, readiness)
+
+            ## Output Format
+            Provide a structured review with:
+            - Summary table with scores (1-10) per domain
+            - Critical issues (must fix before merge)
+            - Important issues (should fix)
+            - Suggested improvements (nice to have)
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://docs.claude.com/en/docs/claude-code/cli-reference for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(shellcheck:*),Bash(yamllint:*)"'
 
