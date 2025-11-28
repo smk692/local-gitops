@@ -1,0 +1,312 @@
+# Loki Stack Helm Chart Values for Mac Mini
+# Using Grafana Loki Stack (Loki + Promtail + Grafana)
+
+# Loki configuration
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 5Gi
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  config:
+    auth_enabled: false
+
+    server:
+      http_listen_port: 3100
+
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+      chunk_idle_period: 5m
+      chunk_retain_period: 30s
+      max_transfer_retries: 0
+
+    schema_config:
+      configs:
+        - from: 2024-01-01
+          store: boltdb-shipper
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+
+    storage_config:
+      boltdb_shipper:
+        active_index_directory: /loki/index
+        cache_location: /loki/cache
+        shared_store: filesystem
+      filesystem:
+        directory: /loki/chunks
+
+    limits_config:
+      enforce_metric_name: false
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      ingestion_rate_mb: 10
+      ingestion_burst_size_mb: 20
+
+    chunk_store_config:
+      max_look_back_period: 0s
+
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 168h
+
+# Promtail configuration (log collector)
+promtail:
+  enabled: true
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+  config:
+    lokiAddress: http://{{ .Release.Name }}:3100/loki/api/v1/push
+
+    snippets:
+      pipelineStages:
+        - docker: {}
+        - cri: {}
+
+      common:
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_node_name
+          target_label: node_name
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_namespace
+          target_label: namespace
+        - action: replace
+          replacement: $1
+          separator: /
+          source_labels:
+            - namespace
+            - app
+          target_label: job
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_name
+          target_label: pod
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_container_name
+          target_label: container
+        - action: replace
+          replacement: /var/log/pods/*$1/*.log
+          separator: /
+          source_labels:
+            - __meta_kubernetes_pod_uid
+            - __meta_kubernetes_pod_container_name
+          target_label: __path__
+
+# Grafana configuration
+grafana:
+  enabled: true
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 2Gi
+
+  # Admin password - override via --set grafana.adminPassword or environment
+  adminPassword: "admin123"
+
+  # ============================================================
+  # Datasources Configuration (Auto-provisioned)
+  # ============================================================
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        # Loki - Log aggregation (default)
+        - name: Loki
+          type: loki
+          access: proxy
+          url: http://{{ .Release.Name }}:3100
+          isDefault: true
+          jsonData:
+            maxLines: 1000
+            derivedFields:
+              - datasourceUid: prometheus
+                matcherRegex: "traceID=(\\w+)"
+                name: TraceID
+                url: "$${__value.raw}"
+
+        # Prometheus - Metrics
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus-server.monitoring.svc.cluster.local:80
+          isDefault: false
+          jsonData:
+            timeInterval: "15s"
+            httpMethod: POST
+
+        # PostgreSQL - Database metrics
+        - name: PostgreSQL
+          type: postgres
+          access: proxy
+          url: postgresql.database.svc.cluster.local:5432
+          database: appdb
+          user: appuser
+          secureJsonData:
+            password: "${POSTGRES_APP_PASSWORD:-appuser123}"
+          jsonData:
+            sslmode: disable
+            maxOpenConns: 5
+            maxIdleConns: 2
+            connMaxLifetime: 14400
+            postgresVersion: 1600
+            timescaledb: false
+
+  # ============================================================
+  # Dashboard Providers
+  # ============================================================
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: 'General'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+        - name: 'infrastructure'
+          orgId: 1
+          folder: 'Infrastructure'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/infrastructure
+        - name: 'kubernetes'
+          orgId: 1
+          folder: 'Kubernetes'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/kubernetes
+
+  # ============================================================
+  # Pre-configured Dashboards
+  # ============================================================
+  dashboardsConfigMaps:
+    default: "grafana-dashboards-default"
+    infrastructure: "grafana-dashboards-infra"
+    kubernetes: "grafana-dashboards-k8s"
+
+  # Download dashboards from grafana.com
+  dashboards:
+    default:
+      # Node Exporter Full Dashboard
+      node-exporter:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+    infrastructure:
+      # Kafka Exporter Overview
+      kafka-overview:
+        gnetId: 7589
+        revision: 5
+        datasource: Prometheus
+      # PostgreSQL Database
+      postgresql:
+        gnetId: 9628
+        revision: 7
+        datasource: Prometheus
+    kubernetes:
+      # Kubernetes Cluster Monitoring
+      k8s-cluster:
+        gnetId: 315
+        revision: 3
+        datasource: Prometheus
+      # Kubernetes Pod Logs (Loki)
+      k8s-logs:
+        gnetId: 15141
+        revision: 1
+        datasource: Loki
+
+  # ============================================================
+  # Grafana Configuration
+  # ============================================================
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+    auth.anonymous:
+      enabled: false
+    security:
+      admin_user: admin
+    users:
+      allow_sign_up: false
+    dashboards:
+      default_home_dashboard_path: /var/lib/grafana/dashboards/default/node-exporter.json
+    alerting:
+      enabled: true
+    unified_alerting:
+      enabled: true
+
+  # ============================================================
+  # Sidecar for Dashboard ConfigMaps
+  # ============================================================
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      folder: /var/lib/grafana/dashboards
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+      label: grafana_datasource
+      labelValue: "1"
+      searchNamespace: ALL
+
+  service:
+    type: ClusterIP
+    port: 80
+
+# Optional: Prometheus for metrics (uncomment if needed)
+# prometheus:
+#   enabled: true
+#   server:
+#     resources:
+#       limits:
+#         cpu: 500m
+#         memory: 512Mi
+#       requests:
+#         cpu: 250m
+#         memory: 256Mi
+#     persistentVolume:
+#       enabled: true
+#       storageClass: local-path
+#       size: 5Gi

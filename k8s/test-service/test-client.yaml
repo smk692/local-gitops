@@ -1,0 +1,50 @@
+---
+# 인프라 연결 테스트 클라이언트
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infra-test-client
+  namespace: test
+  labels:
+    app: infra-test
+spec:
+  containers:
+  - name: test-client
+    image: curlimages/curl:latest
+    command: ["/bin/sh"]
+    args:
+    - -c
+    - |
+      echo "=== 인프라 연결 테스트 시작 ==="
+      echo ""
+      echo "1. Kafka 연결 테스트..."
+      if nc -zv kafka.infra.svc.cluster.local 9092 2>&1 | grep -q 'open\|succeeded'; then
+        echo "✅ Kafka 연결 성공"
+      else
+        echo "❌ Kafka 연결 실패"
+      fi
+      echo ""
+      echo "2. PostgreSQL 연결 테스트..."
+      if nc -zv postgresql.infra.svc.cluster.local 5432 2>&1 | grep -q 'open\|succeeded'; then
+        echo "✅ PostgreSQL 연결 성공"
+      else
+        echo "❌ PostgreSQL 연결 실패"
+      fi
+      echo ""
+      echo "3. Test Service 연결 테스트..."
+      if curl -s -o /dev/null -w "%{http_code}" http://test-service.test.svc.cluster.local | grep -q "200"; then
+        echo "✅ Test Service 연결 성공"
+      else
+        echo "❌ Test Service 연결 실패"
+      fi
+      echo ""
+      echo "=== 테스트 완료 ==="
+      sleep 3600
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 50m
+        memory: 32Mi
+  restartPolicy: Never

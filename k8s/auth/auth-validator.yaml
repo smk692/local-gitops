@@ -1,0 +1,287 @@
+---
+# Auth Validator - OAuth2와 PostgreSQL 연동 인증 검증 서비스
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-validator-config
+  namespace: infra
+data:
+  POSTGRES_HOST: "postgresql.infra.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "postgres"
+  POSTGRES_USER: "postgres"
+  LOG_LEVEL: "INFO"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-validator
+  namespace: infra
+  labels:
+    app: auth-validator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-validator
+  template:
+    metadata:
+      labels:
+        app: auth-validator
+    spec:
+      containers:
+      - name: auth-validator
+        image: python:3.11-slim
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install --no-cache-dir flask psycopg2-binary gunicorn && \
+            cat > /app/validator.py <<'EOF'
+            from flask import Flask, request, jsonify
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            import os
+            import logging
+            from datetime import datetime
+
+            app = Flask(__name__)
+            logging.basicConfig(level=os.getenv('LOG_LEVEL', 'INFO'))
+            logger = logging.getLogger(__name__)
+
+            def get_db_connection():
+                """PostgreSQL 연결"""
+                return psycopg2.connect(
+                    host=os.getenv('POSTGRES_HOST', 'postgresql'),
+                    port=os.getenv('POSTGRES_PORT', '5432'),
+                    database=os.getenv('POSTGRES_DB', 'postgres'),
+                    user=os.getenv('POSTGRES_USER', 'postgres'),
+                    password=os.getenv('POSTGRES_PASSWORD', ''),
+                    cursor_factory=RealDictCursor
+                )
+
+            def is_email_allowed(email):
+                """화이트리스트 확인"""
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute("SELECT email FROM allowed_emails WHERE email = %s", (email,))
+                    result = cur.fetchone()
+                    cur.close()
+                    conn.close()
+                    return result is not None
+                except Exception as e:
+                    logger.error(f"Database error checking whitelist: {e}")
+                    return False
+
+            def create_or_update_user(email, name=None, picture_url=None):
+                """사용자 생성 또는 업데이트"""
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+
+                    # 사용자 존재 확인
+                    cur.execute("SELECT id, login_count FROM users WHERE email = %s", (email,))
+                    user = cur.fetchone()
+
+                    if user:
+                        # 기존 사용자 업데이트
+                        cur.execute("""
+                            UPDATE users
+                            SET last_login = CURRENT_TIMESTAMP,
+                                login_count = login_count + 1,
+                                name = COALESCE(%s, name),
+                                picture_url = COALESCE(%s, picture_url)
+                            WHERE email = %s
+                        """, (name, picture_url, email))
+                        logger.info(f"Updated user: {email}")
+                    else:
+                        # 신규 사용자 생성
+                        cur.execute("""
+                            INSERT INTO users (email, name, picture_url)
+                            VALUES (%s, %s, %s)
+                        """, (email, name, picture_url))
+                        logger.info(f"Created new user: {email}")
+
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    return True
+                except Exception as e:
+                    logger.error(f"Database error creating/updating user: {e}")
+                    return False
+
+            def log_login(email, ip_address, user_agent):
+                """로그인 이력 기록"""
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO login_history (user_email, ip_address, user_agent)
+                        VALUES (%s, %s, %s)
+                    """, (email, ip_address, user_agent))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                except Exception as e:
+                    logger.error(f"Database error logging login: {e}")
+
+            @app.route('/validate', methods=['GET', 'POST'])
+            def validate():
+                """OAuth2 Proxy로부터 인증 요청 검증"""
+                # OAuth2 Proxy가 전달하는 헤더
+                email = request.headers.get('X-Auth-Request-Email')
+                name = request.headers.get('X-Auth-Request-User', '')
+
+                if not email:
+                    logger.warning("No email provided in headers")
+                    return jsonify({
+                        "error": "No email provided",
+                        "allowed": False
+                    }), 401
+
+                logger.info(f"Validating access for: {email}")
+
+                # 화이트리스트 확인
+                if not is_email_allowed(email):
+                    logger.warning(f"Email not in whitelist: {email}")
+                    return jsonify({
+                        "error": "Email not authorized",
+                        "allowed": False,
+                        "email": email
+                    }), 403
+
+                # 사용자 생성/업데이트
+                create_or_update_user(email, name)
+
+                # 로그인 이력 기록
+                ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+                user_agent = request.headers.get('User-Agent', '')
+                log_login(email, ip_address, user_agent)
+
+                logger.info(f"Access granted for: {email}")
+                return jsonify({
+                    "allowed": True,
+                    "email": email,
+                    "name": name
+                }), 200
+
+            @app.route('/health', methods=['GET'])
+            def health():
+                """헬스체크"""
+                try:
+                    conn = get_db_connection()
+                    conn.close()
+                    return jsonify({"status": "healthy", "database": "connected"}), 200
+                except Exception as e:
+                    logger.error(f"Health check failed: {e}")
+                    return jsonify({"status": "unhealthy", "database": "disconnected", "error": str(e)}), 503
+
+            @app.route('/stats', methods=['GET'])
+            def stats():
+                """통계 조회 (간단한 정보)"""
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+
+                    cur.execute("SELECT COUNT(*) as count FROM allowed_emails")
+                    whitelist_count = cur.fetchone()['count']
+
+                    cur.execute("SELECT COUNT(*) as count FROM users")
+                    user_count = cur.fetchone()['count']
+
+                    cur.execute("SELECT COUNT(*) as count FROM login_history WHERE login_at > NOW() - INTERVAL '24 hours'")
+                    login_24h = cur.fetchone()['count']
+
+                    cur.close()
+                    conn.close()
+
+                    return jsonify({
+                        "whitelist_count": whitelist_count,
+                        "user_count": user_count,
+                        "logins_24h": login_24h
+                    }), 200
+                except Exception as e:
+                    logger.error(f"Stats error: {e}")
+                    return jsonify({"error": str(e)}), 500
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=8080)
+            EOF
+            exec gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 30 --access-logfile - --error-logfile - validator:app
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: auth-validator-config
+              key: POSTGRES_HOST
+        - name: POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: auth-validator-config
+              key: POSTGRES_PORT
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: auth-validator-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: auth-validator-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql
+              key: postgres-password
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: auth-validator-config
+              key: LOG_LEVEL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-validator
+  namespace: infra
+  labels:
+    app: auth-validator
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: auth-validator

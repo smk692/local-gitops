@@ -1,0 +1,76 @@
+# cert-manager Helm Chart Values for Mac Mini
+# Manages TLS certificates with Let's Encrypt
+
+# Installation namespace
+namespace: cert-manager
+
+# Resource limits for Mac Mini
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Webhook resources
+webhook:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# CA Injector resources
+cainjector:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Install CRDs with Helm
+installCRDs: true
+
+# Prometheus metrics
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: false
+
+# DNS01 recursive nameservers (for DuckDNS or other providers)
+dns01RecursiveNameservers: "8.8.8.8:53,1.1.1.1:53"
+dns01RecursiveNameserversOnly: true
+
+# Pod security
+podSecurityContext:
+  runAsNonRoot: true
+
+# Container security
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+
+# Global settings
+global:
+  leaderElection:
+    namespace: cert-manager
+
+# Startupapicheck (pre-install hook)
+startupapicheck:
+  timeout: 5m
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

@@ -1,0 +1,39 @@
+---
+# Namespace for Infrastructure Services (Kafka, PostgreSQL)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+  labels:
+    name: infra
+    environment: production
+
+---
+# Namespace for Backend Services
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend
+  labels:
+    name: backend
+    environment: production
+
+---
+# Namespace for Frontend Services
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+  labels:
+    name: frontend
+    environment: production
+
+---
+# Namespace for Monitoring Stack
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    environment: production

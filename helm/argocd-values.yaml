@@ -1,0 +1,207 @@
+# ArgoCD Helm Chart Values for Mac Mini
+# GitOps continuous delivery tool
+
+# ============================================================
+# Global Settings
+# ============================================================
+global:
+  image:
+    tag: "v2.10.0"
+
+# ============================================================
+# Server Configuration
+# ============================================================
+server:
+  # Resource limits for Mac Mini
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Extra args
+  extraArgs:
+    - --insecure  # Disable TLS (ingress handles TLS)
+
+  # Service configuration
+  service:
+    type: ClusterIP
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    hosts:
+      - argocd.son.duckdns.org
+    tls:
+      - hosts:
+          - argocd.son.duckdns.org
+        secretName: argocd-tls
+
+  # Config
+  config:
+    # URL for ArgoCD
+    url: https://argocd.son.duckdns.org
+
+    # Resource tracking method
+    application.resourceTrackingMethod: annotation
+
+    # Status badge
+    statusbadge.enabled: "true"
+
+    # Kustomize options
+    kustomize.buildOptions: --enable-helm
+
+  # RBAC config
+  rbacConfig:
+    policy.default: role:readonly
+    policy.csv: |
+      g, argocd-admins, role:admin
+
+# ============================================================
+# Controller Configuration
+# ============================================================
+controller:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Metrics
+  metrics:
+    enabled: true
+    service:
+      servicePort: 8082
+
+# ============================================================
+# Repo Server Configuration
+# ============================================================
+repoServer:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Volume mounts for custom tools
+  volumes:
+    - name: custom-tools
+      emptyDir: {}
+
+# ============================================================
+# Redis Configuration
+# ============================================================
+redis:
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# ============================================================
+# Application Set Controller
+# ============================================================
+applicationSet:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# ============================================================
+# Notifications Controller
+# ============================================================
+notifications:
+  enabled: true
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 25m
+      memory: 64Mi
+
+# ============================================================
+# DEX (OpenID Connect)
+# ============================================================
+dex:
+  enabled: false  # Disable for local setup
+
+# ============================================================
+# Configurations
+# ============================================================
+configs:
+  # Known hosts for Git repos
+  ssh:
+    knownHosts: |
+      github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+      github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+      github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+      gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf
+      gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFSMqzJeV9rUzU4kWitGjeR4PWSa29SPqJ1fVkhtj3Hw9xjLVXVYrU9QlYWrOLXBpQ6KWjbjTDTdDkoohFzgbEY=
+      gitlab.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsj2bNKTBSpIYDEGk9KxsGh3mySTRgMtXL583qmBpzeQ+jqCMRgBqB98u3z++J1sKlXHWfM9dyhSevkMwSbhoR8XIq/U0tCNyokEi/ueaBMCvbcTHhO7FcwzY92WK4 Voices+67OmMm1xBiAv5gtmDkE4U8ee8Mb9TtPj71mr7aDiKkQLpbXschYDCtgA1PO9Z5Ii9q16KNjJ5NEKIyWmgpdr127qaT8E7a6M8D+UPhX29LQKWSYP4W35zuDKcJgBNLHOOBDAffQ8GRc2z1TjKpDYLhWN6rx2N7NXMhF6lcttNLvLnpUXoAMJNt/j3NqV6VgJMgf3De60aQ/1r3IH0=
+      bitbucket.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIazEu89wgQZ4bqs3d63QSMzYVa0MuJ2e2gKTKqu+UUO
+      bitbucket.org ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPIQmuzMBuKdWeF4+a2sjSSpBK0iqitSQ+5BM9KhpexuGt20JpTVM7u5BDZngncgrqDMbWdxMWWOGtZ9UgbqgZE=
+      bitbucket.org ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAubiN81eDcafrgMeLzaFPsw2kNvEcqTKl/VqLat/MaB33pZy0y3rJZtnqwR2qOOvbwKZYKiEO1O6VqNEBxKvJJelCq0dTXWT5pbO2gDXC6h6QDXCaHo6pOHGPUy+YBaGQRGuSusMEASYiWunYN0vCAI8QaXnWMXNMdFP3jHAJH0eDsoiGnLPBlBp4TNm6rYI74nMzgz3B9IikW4WVK+dc8KZJZWYjAuORU3jc1c/NPskD2ASinf8v3xnfXeukU0sJ5N6m5E8VLjObPEO+mN2t/FZTMZLiFqPWc/ALSqnMnnhwrNi2rbfg/rd/IpL8Le3pSBne8+seeFVBoGqzHM9yXw==
+
+  # Repository credentials template
+  credentialTemplates: {}
+
+  # Repositories
+  repositories: {}
+
+# ============================================================
+# Extra Objects (Applications)
+# ============================================================
+extraObjects:
+  # AppProject for infrastructure
+  - apiVersion: argoproj.io/v1alpha1
+    kind: AppProject
+    metadata:
+      name: infrastructure
+      namespace: argocd
+    spec:
+      description: Infrastructure components
+      sourceRepos:
+        - '*'
+      destinations:
+        - namespace: '*'
+          server: https://kubernetes.default.svc
+      clusterResourceWhitelist:
+        - group: '*'
+          kind: '*'
+
+  # AppProject for applications
+  - apiVersion: argoproj.io/v1alpha1
+    kind: AppProject
+    metadata:
+      name: applications
+      namespace: argocd
+    spec:
+      description: Application deployments
+      sourceRepos:
+        - '*'
+      destinations:
+        - namespace: backend
+          server: https://kubernetes.default.svc
+        - namespace: frontend
+          server: https://kubernetes.default.svc
+      clusterResourceWhitelist:
+        - group: ''
+          kind: Namespace

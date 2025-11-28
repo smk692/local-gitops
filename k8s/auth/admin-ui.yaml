@@ -1,0 +1,704 @@
+---
+# Admin UI - 사용자 및 화이트리스트 관리 인터페이스
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-ui-config
+  namespace: infra
+data:
+  POSTGRES_HOST: "postgresql.infra.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "postgres"
+  POSTGRES_USER: "postgres"
+  APP_TITLE: "Account Management"
+  SECRET_KEY: "change-this-in-production-use-random-string"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-ui
+  namespace: infra
+  labels:
+    app: admin-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-ui
+  template:
+    metadata:
+      labels:
+        app: admin-ui
+    spec:
+      containers:
+      - name: admin-ui
+        image: python:3.11-slim
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            pip install --no-cache-dir flask psycopg2-binary gunicorn && \
+            cat > /app/admin.py <<'PYEOF'
+            from flask import Flask, render_template_string, request, jsonify, redirect, url_for, flash, session
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            import os
+            import logging
+            from datetime import datetime
+            from functools import wraps
+
+            app = Flask(__name__)
+            app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+
+            def get_db_connection():
+                """PostgreSQL 연결"""
+                return psycopg2.connect(
+                    host=os.getenv('POSTGRES_HOST', 'postgresql'),
+                    port=os.getenv('POSTGRES_PORT', '5432'),
+                    database=os.getenv('POSTGRES_DB', 'postgres'),
+                    user=os.getenv('POSTGRES_USER', 'postgres'),
+                    password=os.getenv('POSTGRES_PASSWORD', ''),
+                    cursor_factory=RealDictCursor
+                )
+
+            def require_auth(f):
+                """OAuth2를 통한 인증 확인 (NGINX가 헤더로 전달)"""
+                @wraps(f)
+                def decorated_function(*args, **kwargs):
+                    email = request.headers.get('X-Auth-Request-Email')
+                    if not email:
+                        return "Unauthorized - Please login via OAuth2 Proxy", 401
+
+                    # 관리자 권한 확인 (화이트리스트에 있는 첫 번째 사용자가 관리자라고 가정)
+                    # 실제로는 별도의 admin 테이블이나 role 컬럼을 사용하는 것이 좋습니다
+                    session['user_email'] = email
+                    return f(*args, **kwargs)
+                return decorated_function
+
+            # HTML 템플릿
+            BASE_TEMPLATE = '''
+            <!DOCTYPE html>
+            <html lang="ko">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>{{ title }} - Account Management</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+                        background: #f5f5f5;
+                        padding: 20px;
+                    }
+                    .container {
+                        max-width: 1200px;
+                        margin: 0 auto;
+                        background: white;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        padding: 30px;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #eee;
+                    }
+                    h1 { color: #333; font-size: 28px; }
+                    .user-info {
+                        font-size: 14px;
+                        color: #666;
+                    }
+                    .nav {
+                        display: flex;
+                        gap: 15px;
+                        margin-bottom: 30px;
+                    }
+                    .nav a {
+                        padding: 10px 20px;
+                        background: #007bff;
+                        color: white;
+                        text-decoration: none;
+                        border-radius: 4px;
+                        transition: background 0.2s;
+                    }
+                    .nav a:hover { background: #0056b3; }
+                    .nav a.active { background: #0056b3; }
+                    .stats {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                        gap: 20px;
+                        margin-bottom: 30px;
+                    }
+                    .stat-card {
+                        background: #f8f9fa;
+                        padding: 20px;
+                        border-radius: 6px;
+                        border-left: 4px solid #007bff;
+                    }
+                    .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
+                    .stat-card .value { font-size: 32px; font-weight: bold; color: #333; }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                    }
+                    th, td {
+                        padding: 12px;
+                        text-align: left;
+                        border-bottom: 1px solid #eee;
+                    }
+                    th {
+                        background: #f8f9fa;
+                        font-weight: 600;
+                        color: #333;
+                    }
+                    tr:hover { background: #f8f9fa; }
+                    .btn {
+                        padding: 8px 16px;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        transition: all 0.2s;
+                    }
+                    .btn-danger {
+                        background: #dc3545;
+                        color: white;
+                    }
+                    .btn-danger:hover { background: #c82333; }
+                    .btn-success {
+                        background: #28a745;
+                        color: white;
+                    }
+                    .btn-success:hover { background: #218838; }
+                    .form-group {
+                        margin-bottom: 20px;
+                    }
+                    .form-group label {
+                        display: block;
+                        margin-bottom: 8px;
+                        font-weight: 500;
+                        color: #333;
+                    }
+                    .form-group input, .form-group textarea {
+                        width: 100%;
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                        border-radius: 4px;
+                        font-size: 14px;
+                    }
+                    .form-group textarea {
+                        min-height: 80px;
+                        resize: vertical;
+                    }
+                    .alert {
+                        padding: 12px 20px;
+                        border-radius: 4px;
+                        margin-bottom: 20px;
+                    }
+                    .alert-success {
+                        background: #d4edda;
+                        color: #155724;
+                        border: 1px solid #c3e6cb;
+                    }
+                    .alert-danger {
+                        background: #f8d7da;
+                        color: #721c24;
+                        border: 1px solid #f5c6cb;
+                    }
+                    .empty-state {
+                        text-align: center;
+                        padding: 40px;
+                        color: #999;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>{{ title }}</h1>
+                        <div class="user-info">
+                            Logged in as: <strong>{{ user_email }}</strong>
+                        </div>
+                    </div>
+                    {% block content %}{% endblock %}
+                </div>
+            </body>
+            </html>
+            '''
+
+            DASHBOARD_TEMPLATE = BASE_TEMPLATE.replace('{% block content %}{% endblock %}', '''
+            {% block content %}
+            <div class="nav">
+                <a href="/" class="active">Dashboard</a>
+                <a href="/whitelist">Whitelist</a>
+                <a href="/users">Users</a>
+                <a href="/history">Login History</a>
+            </div>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Whitelisted Emails</h3>
+                    <div class="value">{{ stats.whitelist_count }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <div class="value">{{ stats.user_count }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Logins (24h)</h3>
+                    <div class="value">{{ stats.logins_24h }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Logins (7d)</h3>
+                    <div class="value">{{ stats.logins_7d }}</div>
+                </div>
+            </div>
+
+            <h2 style="margin-top: 30px; margin-bottom: 15px;">Recent Logins</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Time</th>
+                        <th>IP Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if recent_logins %}
+                        {% for login in recent_logins %}
+                        <tr>
+                            <td>{{ login.user_email }}</td>
+                            <td>{{ login.login_at }}</td>
+                            <td>{{ login.ip_address }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="3" class="empty-state">No recent logins</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            {% endblock %}
+            ''')
+
+            WHITELIST_TEMPLATE = BASE_TEMPLATE.replace('{% block content %}{% endblock %}', '''
+            {% block content %}
+            <div class="nav">
+                <a href="/">Dashboard</a>
+                <a href="/whitelist" class="active">Whitelist</a>
+                <a href="/users">Users</a>
+                <a href="/history">Login History</a>
+            </div>
+
+            {% if message %}
+            <div class="alert alert-{{ message_type }}">{{ message }}</div>
+            {% endif %}
+
+            <h2 style="margin-bottom: 20px;">Add Email to Whitelist</h2>
+            <form method="POST" action="/whitelist/add">
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" name="email" required placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Notes (Optional)</label>
+                    <textarea name="notes" placeholder="Optional notes about this user"></textarea>
+                </div>
+                <button type="submit" class="btn btn-success">Add to Whitelist</button>
+            </form>
+
+            <h2 style="margin-top: 40px; margin-bottom: 15px;">Whitelisted Emails</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Added At</th>
+                        <th>Added By</th>
+                        <th>Notes</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if emails %}
+                        {% for email in emails %}
+                        <tr>
+                            <td>{{ email.email }}</td>
+                            <td>{{ email.added_at }}</td>
+                            <td>{{ email.added_by }}</td>
+                            <td>{{ email.notes or '-' }}</td>
+                            <td>
+                                <form method="POST" action="/whitelist/remove" style="display:inline">
+                                    <input type="hidden" name="email" value="{{ email.email }}">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Remove {{ email.email }} from whitelist?')">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="5" class="empty-state">No emails in whitelist</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            {% endblock %}
+            ''')
+
+            USERS_TEMPLATE = BASE_TEMPLATE.replace('{% block content %}{% endblock %}', '''
+            {% block content %}
+            <div class="nav">
+                <a href="/">Dashboard</a>
+                <a href="/whitelist">Whitelist</a>
+                <a href="/users" class="active">Users</a>
+                <a href="/history">Login History</a>
+            </div>
+
+            <h2 style="margin-bottom: 15px;">Registered Users ({{ users|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th>First Login</th>
+                        <th>Last Login</th>
+                        <th>Login Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if users %}
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.name or '-' }}</td>
+                            <td>{{ user.first_login }}</td>
+                            <td>{{ user.last_login }}</td>
+                            <td>{{ user.login_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="5" class="empty-state">No users registered yet</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            {% endblock %}
+            ''')
+
+            HISTORY_TEMPLATE = BASE_TEMPLATE.replace('{% block content %}{% endblock %}', '''
+            {% block content %}
+            <div class="nav">
+                <a href="/">Dashboard</a>
+                <a href="/whitelist">Whitelist</a>
+                <a href="/users">Users</a>
+                <a href="/history" class="active">Login History</a>
+            </div>
+
+            <h2 style="margin-bottom: 15px;">Login History (Last 100)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Login Time</th>
+                        <th>IP Address</th>
+                        <th>User Agent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if history %}
+                        {% for entry in history %}
+                        <tr>
+                            <td>{{ entry.user_email }}</td>
+                            <td>{{ entry.login_at }}</td>
+                            <td>{{ entry.ip_address }}</td>
+                            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{{ entry.user_agent }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="4" class="empty-state">No login history</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            {% endblock %}
+            ''')
+
+            @app.route('/')
+            @require_auth
+            def dashboard():
+                """대시보드"""
+                conn = get_db_connection()
+                cur = conn.cursor()
+
+                # 통계 수집
+                cur.execute("SELECT COUNT(*) as count FROM allowed_emails")
+                whitelist_count = cur.fetchone()['count']
+
+                cur.execute("SELECT COUNT(*) as count FROM users")
+                user_count = cur.fetchone()['count']
+
+                cur.execute("SELECT COUNT(*) as count FROM login_history WHERE login_at > NOW() - INTERVAL '24 hours'")
+                logins_24h = cur.fetchone()['count']
+
+                cur.execute("SELECT COUNT(*) as count FROM login_history WHERE login_at > NOW() - INTERVAL '7 days'")
+                logins_7d = cur.fetchone()['count']
+
+                # 최근 로그인
+                cur.execute("""
+                    SELECT user_email, login_at, ip_address
+                    FROM login_history
+                    ORDER BY login_at DESC
+                    LIMIT 10
+                """)
+                recent_logins = cur.fetchall()
+
+                cur.close()
+                conn.close()
+
+                return render_template_string(DASHBOARD_TEMPLATE,
+                    title='Dashboard',
+                    user_email=session.get('user_email'),
+                    stats={
+                        'whitelist_count': whitelist_count,
+                        'user_count': user_count,
+                        'logins_24h': logins_24h,
+                        'logins_7d': logins_7d
+                    },
+                    recent_logins=recent_logins
+                )
+
+            @app.route('/whitelist')
+            @require_auth
+            def whitelist():
+                """화이트리스트 관리"""
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM allowed_emails ORDER BY added_at DESC")
+                emails = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                return render_template_string(WHITELIST_TEMPLATE,
+                    title='Whitelist Management',
+                    user_email=session.get('user_email'),
+                    emails=emails,
+                    message=session.pop('message', None),
+                    message_type=session.pop('message_type', 'success')
+                )
+
+            @app.route('/whitelist/add', methods=['POST'])
+            @require_auth
+            def whitelist_add():
+                """화이트리스트에 이메일 추가"""
+                email = request.form.get('email')
+                notes = request.form.get('notes')
+                added_by = session.get('user_email')
+
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO allowed_emails (email, added_by, notes)
+                        VALUES (%s, %s, %s)
+                    """, (email, added_by, notes))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+
+                    session['message'] = f'Successfully added {email} to whitelist'
+                    session['message_type'] = 'success'
+                except psycopg2.IntegrityError:
+                    session['message'] = f'{email} is already in the whitelist'
+                    session['message_type'] = 'danger'
+                except Exception as e:
+                    logger.error(f"Error adding to whitelist: {e}")
+                    session['message'] = f'Error adding email: {str(e)}'
+                    session['message_type'] = 'danger'
+
+                return redirect(url_for('whitelist'))
+
+            @app.route('/whitelist/remove', methods=['POST'])
+            @require_auth
+            def whitelist_remove():
+                """화이트리스트에서 이메일 제거"""
+                email = request.form.get('email')
+
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM allowed_emails WHERE email = %s", (email,))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+
+                    session['message'] = f'Successfully removed {email} from whitelist'
+                    session['message_type'] = 'success'
+                except Exception as e:
+                    logger.error(f"Error removing from whitelist: {e}")
+                    session['message'] = f'Error removing email: {str(e)}'
+                    session['message_type'] = 'danger'
+
+                return redirect(url_for('whitelist'))
+
+            @app.route('/users')
+            @require_auth
+            def users():
+                """사용자 목록"""
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM users ORDER BY last_login DESC")
+                user_list = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                return render_template_string(USERS_TEMPLATE,
+                    title='User List',
+                    user_email=session.get('user_email'),
+                    users=user_list
+                )
+
+            @app.route('/history')
+            @require_auth
+            def history():
+                """로그인 이력"""
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT * FROM login_history
+                    ORDER BY login_at DESC
+                    LIMIT 100
+                """)
+                history_list = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                return render_template_string(HISTORY_TEMPLATE,
+                    title='Login History',
+                    user_email=session.get('user_email'),
+                    history=history_list
+                )
+
+            @app.route('/health')
+            def health():
+                """헬스체크"""
+                return jsonify({"status": "healthy"}), 200
+
+            if __name__ == '__main__':
+                app.run(host='0.0.0.0', port=8080)
+            PYEOF
+            exec gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 30 --access-logfile - --error-logfile - admin:app
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: admin-ui-config
+              key: POSTGRES_HOST
+        - name: POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: admin-ui-config
+              key: POSTGRES_PORT
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: admin-ui-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: admin-ui-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql
+              key: postgres-password
+        - name: SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: admin-ui-config
+              key: SECRET_KEY
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-ui
+  namespace: infra
+  labels:
+    app: admin-ui
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: admin-ui
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin-ui-ingress
+  namespace: infra
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # OAuth2 Proxy + Auth Validator (2단계 인증)
+    # 1단계: OAuth2 Proxy - Google 로그인
+    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.infra.svc.cluster.local:4180/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "https://son.duckdns.org/oauth2/start?rd=$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User, X-Auth-Request-Email"
+    # 2단계: Auth Validator - 화이트리스트 검증 (subrequest)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      auth_request /auth-validator;
+      auth_request_set $auth_status $upstream_status;
+
+      location = /auth-validator {
+        internal;
+        proxy_pass http://auth-validator.infra.svc.cluster.local:8080/validate;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Auth-Request-Email $http_x_auth_request_email;
+        proxy_set_header X-Auth-Request-User $http_x_auth_request_user;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header User-Agent $http_user_agent;
+      }
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: admin.son.duckdns.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-ui
+            port:
+              number: 8080

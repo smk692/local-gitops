@@ -1,0 +1,73 @@
+# TLS Certificates for Mac Mini Infrastructure
+# Uses Let's Encrypt via cert-manager
+
+---
+# Wildcard certificate for *.son.duckdns.org (staging first for testing)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: son-duckdns-tls-staging
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: certificate
+spec:
+  secretName: son-duckdns-tls-staging
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+    - "son.duckdns.org"
+    - "*.son.duckdns.org"
+  duration: 2160h    # 90 days
+  renewBefore: 360h  # 15 days before expiry
+
+---
+# Production certificate (use after testing with staging)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: son-duckdns-tls
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: certificate
+spec:
+  secretName: son-duckdns-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "son.duckdns.org"
+    - "app.son.duckdns.org"
+    - "api.son.duckdns.org"
+    - "grafana.son.duckdns.org"
+    - "kafka-ui.son.duckdns.org"
+    - "pgadmin.son.duckdns.org"
+    - "argocd.son.duckdns.org"
+    - "prometheus.son.duckdns.org"
+  duration: 2160h    # 90 days
+  renewBefore: 360h  # 15 days before expiry
+
+---
+# Internal CA certificate (for internal services)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: ca
+spec:
+  isCA: true
+  commonName: "Mac Mini Internal CA"
+  secretName: internal-ca-key-pair
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  duration: 87600h  # 10 years
+  renewBefore: 8760h  # 1 year before expiry

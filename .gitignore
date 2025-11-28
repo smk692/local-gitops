@@ -1,0 +1,57 @@
+# Sensitive configuration files
+secrets/
+
+# Local tool configurations
+.claude/
+.serena/
+*.secret.yaml
+*.secret.yml
+*-secrets.yaml
+*-secrets.yml
+
+# Environment-specific values
+helm/*-local.yaml
+k8s/*/secrets.yaml
+
+# Backup files
+*.bak
+*.backup
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+
+# Kubernetes generated files
+*.kubeconfig
+
+# Local development
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+dist/
+build/
+
+# Node modules (if any local scripts)
+node_modules/
+
+# Python cache (if any local scripts)
+__pycache__/
+*.pyc
+*.pyo
+
+# k3d storage (if local)
+.k3d/

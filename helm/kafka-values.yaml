@@ -1,0 +1,178 @@
+# Kafka Helm Chart Values for Mac Mini
+# Using Bitnami Kafka Chart with ARM64 support
+# KRaft mode - Single broker configuration (verified 2025-10-26)
+# NOTE: Using legacy images due to Bitnami free tier limitations
+
+# Allow legacy images (required for bitnamilegacy repository)
+global:
+  security:
+    allowInsecureImages: true
+
+# Image configuration - using legacy Bitnami repository
+image:
+  registry: docker.io
+  repository: bitnamilegacy/kafka
+  tag: "3.9.0-debian-12-r12"
+  pullPolicy: IfNotPresent
+
+# KRaft mode: Single broker acting as both controller and broker
+controller:
+  replicaCount: 1
+
+  # Combined mode: process.roles=broker,controller
+  combinedMode:
+    enabled: true
+
+  # Resource limits optimized for Mac Mini
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 3Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Persistence
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    size: 10Gi
+
+  # JVM Heap settings
+  heapOpts: "-Xmx2g -Xms2g"
+
+  # CRITICAL: Add controller.quorum.voters directly to server.properties
+  # Also set offsets.topic.replication.factor to 1 for single broker
+  extraConfig: |
+    controller.quorum.voters=0@kafka-controller-0.kafka-controller-headless.infra.svc.cluster.local:9093
+    offsets.topic.replication.factor=1
+    transaction.state.log.replication.factor=1
+    transaction.state.log.min.isr=1
+
+  # Kafka configuration for single broker
+  extraEnvVars:
+    - name: KAFKA_CFG_NODE_ID
+      value: "0"
+    - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+      value: "0@kafka-controller-0.kafka-controller-headless.infra.svc.cluster.local:9093"
+    - name: KAFKA_CFG_NUM_PARTITIONS
+      value: "3"
+    - name: KAFKA_CFG_DEFAULT_REPLICATION_FACTOR
+      value: "1"
+    - name: KAFKA_CFG_MIN_INSYNC_REPLICAS
+      value: "1"
+    - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
+      value: "1"
+    - name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+      value: "1"
+    - name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR
+      value: "1"
+    - name: KAFKA_CFG_LOG_RETENTION_HOURS
+      value: "168"
+    - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+      value: "true"
+
+# No separate brokers in combined mode
+broker:
+  replicaCount: 0
+
+# ZooKeeper NOT needed for KRaft
+zookeeper:
+  enabled: false
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    client: 9092
+
+# External access configuration
+externalAccess:
+  enabled: false
+  # To enable external access:
+  # enabled: true
+  # service:
+  #   type: NodePort
+  #   nodePorts:
+  #     - 30092
+
+# Metrics configuration - JMX disabled due to image availability
+metrics:
+  kafka:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  jmx:
+    enabled: false  # Disabled - image not available in free tier
+
+# Listener configuration - explicitly set PLAINTEXT protocol for all listeners
+listeners:
+  client:
+    name: CLIENT
+    containerPort: 9092
+    protocol: PLAINTEXT
+    sslClientAuth: ""
+  interbroker:
+    name: INTERNAL
+    containerPort: 9094
+    protocol: PLAINTEXT
+    sslClientAuth: ""
+  controller:
+    name: CONTROLLER
+    containerPort: 9093
+    protocol: PLAINTEXT
+    sslClientAuth: ""
+
+# Security configuration
+auth:
+  # Development/Testing: plaintext (no encryption)
+  clientProtocol: plaintext
+  interBrokerProtocol: plaintext
+
+  # Disable SASL authentication completely
+  sasl:
+    enabled: false
+
+  # Production: Use SASL_SSL (uncomment below and comment above)
+  # clientProtocol: sasl_ssl
+  # interBrokerProtocol: sasl_ssl
+  # sasl:
+  #   mechanism: plain
+  #   interBrokerMechanism: plain
+  #   jaas:
+  #     clientUsers:
+  #       - admin
+  #       - client
+  #     clientPasswords:
+  #       - "admin-password-from-secret"
+  #       - "client-password-from-secret"
+  #     zookeeperUser: admin
+  #     zookeeperPassword: "zookeeper-password-from-secret"
+  #     existingSecret: "kafka-auth"
+
+# TLS/SSL configuration (for production)
+# tls:
+#   enabled: true
+#   existingSecret: "kafka-tls-secret"
+#   password: "keystore-password"
+
+# Security context
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+
+# Enable KRaft mode with static quorum for Kafka 3.x
+kraft:
+  enabled: true
+  kraftVersion: 0  # Static quorum for Kafka 3.9.0
+  controllerQuorumVoters: "0@kafka-controller-0.kafka-controller-headless.infra.svc.cluster.local:9093"
+  # Cluster ID will be auto-generated if not specified

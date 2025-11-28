@@ -1,0 +1,18 @@
+---
+# /etc/hosts configuration guide
+# Add these entries to your /etc/hosts file for local development
+
+# Instructions:
+# 1. Open terminal
+# 2. Run: sudo nano /etc/hosts
+# 3. Add the following lines:
+
+# Mac Mini Infrastructure Services
+127.0.0.1 app.local           # Frontend application
+127.0.0.1 api.local           # Backend API
+127.0.0.1 kafka-ui.local      # Kafka UI
+127.0.0.1 pgadmin.local       # PostgreSQL Admin
+127.0.0.1 grafana.local       # Grafana monitoring
+
+# Save and exit (Ctrl+X, then Y, then Enter)
+# Test with: ping app.local

@@ -1,0 +1,89 @@
+# Resource Profile for 8GB Mac Mini
+# Conservative resource allocation for minimal RAM configuration
+
+kafka:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  heapOpts: "-Xmx1g -Xms1g"
+  zookeeper:
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+postgresql:
+  primary:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 256MB
+      effective_cache_size = 768MB
+      maintenance_work_mem = 64MB
+      work_mem = 2MB
+    pgBouncer:
+      maxClientConnections: 100
+      defaultPoolSize: 5
+
+loki:
+  loki:
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  promtail:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 50m
+        memory: 32Mi
+  grafana:
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+backend:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  replicas: 1
+  hpa:
+    maxReplicas: 2
+
+frontend:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  replicas: 1
+  hpa:
+    maxReplicas: 2

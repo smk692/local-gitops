@@ -1,0 +1,90 @@
+---
+# Frontend Service Deployment Template (Next.js/React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-service
+  namespace: frontend
+  labels:
+    app: frontend-service
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend-service
+  template:
+    metadata:
+      labels:
+        app: frontend-service
+        version: v1
+    spec:
+      containers:
+      - name: frontend
+        # Replace with your actual frontend image
+        image: your-registry/frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        # Backend API configuration
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://backend-service.backend.svc.cluster.local:3000/api"
+        - name: API_URL
+          value: "http://backend-service.backend.svc.cluster.local:3000/api"
+
+        # Application configuration
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+
+        # Optional: External API URL for client-side requests
+        - name: NEXT_PUBLIC_EXTERNAL_API_URL
+          value: "http://api.local/api"
+
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+# ConfigMap for frontend configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: frontend
+data:
+  config.json: |
+    {
+      "appName": "Mac Mini App",
+      "version": "1.0.0",
+      "features": {
+        "analytics": false,
+        "monitoring": true
+      }
+    }

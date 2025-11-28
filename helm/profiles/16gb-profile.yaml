@@ -1,0 +1,89 @@
+# Resource Profile for 16GB Mac Mini (DEFAULT)
+# Balanced resource allocation for standard configuration
+
+kafka:
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 3Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  heapOpts: "-Xmx2g -Xms2g"
+  zookeeper:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+postgresql:
+  primary:
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    extendedConfiguration: |
+      max_connections = 150
+      shared_buffers = 512MB
+      effective_cache_size = 1536MB
+      maintenance_work_mem = 128MB
+      work_mem = 3MB
+    pgBouncer:
+      maxClientConnections: 200
+      defaultPoolSize: 10
+
+loki:
+  loki:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  promtail:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+  grafana:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+backend:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  replicas: 2
+  hpa:
+    maxReplicas: 5
+
+frontend:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  replicas: 2
+  hpa:
+    maxReplicas: 4

@@ -1,0 +1,90 @@
+# k3d Cluster Configuration for Mac Mini M4
+# This file declares the k3d cluster setup for the macmini-cluster
+#
+# Usage: k3d cluster create --config k3d-config.yaml
+# Documentation: https://k3d.io/v5.6.0/usage/configfile/
+
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+
+metadata:
+  name: macmini-cluster
+
+# Cluster topology
+servers: 1  # Single control plane node
+agents: 0   # No additional worker nodes (all workloads on server)
+
+# Kubernetes API server configuration
+kubeAPI:
+  hostIP: "127.0.0.1"
+  hostPort: "6550"  # Access via localhost:6550
+
+# Port mappings for Ingress traffic
+# These ports are exposed on the host and forwarded to the cluster's LoadBalancer
+ports:
+  # HTTP traffic: host:8080 -> cluster:80
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+  # HTTPS traffic: host:8443 -> cluster:443
+  - port: 8443:443
+    nodeFilters:
+      - loadbalancer
+
+# Volume mounts for persistent storage
+# k3s uses local-path provisioner by default
+volumes:
+  - volume: ~/.k3d/storage:/var/lib/rancher/k3s/storage
+    nodeFilters:
+      - all
+
+# Registries configuration (optional - for local registry if needed)
+# registries:
+#   create:
+#     name: registry.localhost
+#     host: "0.0.0.0"
+#     hostPort: "5000"
+
+# k3d specific options
+options:
+  k3d:
+    wait: true           # Wait for cluster to be ready
+    timeout: "5m0s"      # Timeout for cluster creation
+    disableLoadbalancer: false
+    disableImageVolume: false
+    disableRollback: false
+
+  # k3s specific options
+  k3s:
+    extraArgs:
+      # Disable Traefik - we use NGINX Ingress Controller instead
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      # Disable ServiceLB if using external LoadBalancer
+      # - arg: --disable=servicelb
+      #   nodeFilters:
+      #     - server:*
+
+  # kubeconfig options
+  kubeconfig:
+    updateDefaultKubeconfig: true   # Merge into ~/.kube/config
+    switchCurrentContext: true       # Set as current context
+
+# Environment variables for nodes (optional)
+# env:
+#   - envVar: SOME_VAR=some_value
+#     nodeFilters:
+#       - all
+
+# Labels for nodes (optional)
+# labels:
+#   - label: environment=development
+#     nodeFilters:
+#       - all
+
+# Runtime options (optional)
+# runtime:
+#   gpuRequest: all  # For GPU workloads
+#   serversMemory: 4g
+#   agentsMemory: 2g

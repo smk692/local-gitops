@@ -1,0 +1,110 @@
+---
+# pgAdmin for PostgreSQL management
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: infra
+  labels:
+    app: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+      - name: pgadmin
+        image: dpage/pgadmin4:latest
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        # IMPORTANT: Change these credentials in production!
+        - name: PGADMIN_DEFAULT_EMAIL
+          value: "admin@local.com"
+        - name: PGADMIN_DEFAULT_PASSWORD
+          value: "admin123"
+        - name: PGADMIN_CONFIG_SERVER_MODE
+          value: "False"
+        - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+          value: "True"
+        - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
+          value: "True"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+      volumes:
+      - name: pgadmin-data
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: infra
+  labels:
+    app: pgadmin
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: pgadmin
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pgadmin-ingress
+  namespace: infra
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # OAuth2 Proxy + Auth Validator (2단계 인증)
+    # 1단계: OAuth2 Proxy - Google 로그인
+    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.infra.svc.cluster.local:4180/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "https://son.duckdns.org/oauth2/start?rd=$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User, X-Auth-Request-Email"
+    # 2단계: Auth Validator - 화이트리스트 검증 (subrequest)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      auth_request /auth-validator;
+      auth_request_set $auth_status $upstream_status;
+
+      location = /auth-validator {
+        internal;
+        proxy_pass http://auth-validator.infra.svc.cluster.local:8080/validate;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Auth-Request-Email $http_x_auth_request_email;
+        proxy_set_header X-Auth-Request-User $http_x_auth_request_user;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header User-Agent $http_user_agent;
+      }
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: pgadmin.son.duckdns.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pgadmin
+            port:
+              number: 80

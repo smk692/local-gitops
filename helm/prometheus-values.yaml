@@ -1,0 +1,150 @@
+# Prometheus Monitoring Stack Configuration
+# Collects metrics from Kafka, PostgreSQL, Backend, and Frontend services
+
+# Prometheus Server Configuration
+server:
+  enabled: true
+  global:
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    evaluation_interval: 15s
+
+  retention: "15d"
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+    storageClass: "local-path"
+
+  service:
+    type: ClusterIP
+    servicePort: 9090
+
+# AlertManager Configuration
+alertmanager:
+  enabled: false  # Enable if you need alerting
+
+# Pushgateway Configuration
+pushgateway:
+  enabled: false
+
+# Node Exporter - collects system metrics
+nodeExporter:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+# Kube State Metrics - collects Kubernetes object state
+kubeStateMetrics:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+# Service monitors for automatic discovery
+serverFiles:
+  prometheus.yml:
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Kubernetes API server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      # Kubernetes nodes
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # Kafka JMX metrics (requires JMX exporter)
+      - job_name: 'kafka'
+        static_configs:
+          - targets: ['kafka.infra.svc.cluster.local:9308']
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: kafka.infra.svc.cluster.local:9308
+
+      # PostgreSQL metrics (requires postgres_exporter)
+      - job_name: 'postgresql'
+        static_configs:
+          - targets: ['postgresql-metrics.infra.svc.cluster.local:9187']
+
+      # Backend service metrics
+      - job_name: 'backend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - backend
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: backend-service
+          - source_labels: [__meta_kubernetes_pod_ip]
+            action: replace
+            target_label: __address__
+            replacement: ${1}:8080
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+
+      # Frontend service metrics (if applicable)
+      - job_name: 'frontend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - frontend
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: frontend-service
+          - source_labels: [__meta_kubernetes_pod_ip]
+            action: replace
+            target_label: __address__
+            replacement: ${1}:3000
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+
+# Grafana Integration
+# Note: Grafana is already deployed with Loki stack
+# Add Prometheus as data source in Grafana
