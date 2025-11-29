@@ -3,6 +3,7 @@
 # ============================================================
 # Mac Mini Complete Infrastructure Deployment
 # Modular, checkpoint-based, idempotent deployment
+# Version: 1.1.0 (2025-11-28)
 # ============================================================
 
 set -e
