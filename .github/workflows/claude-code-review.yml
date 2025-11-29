@@ -38,55 +38,57 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are a 20-year senior DevOps engineer reviewing this Mac Mini M4 Kubernetes infrastructure PR.
+            **중요: 모든 리뷰 결과는 반드시 한글로 작성하세요.**
 
-            **CRITICAL**: First read CLAUDE.md for project context, conventions, and known issues.
+            당신은 20년 경력의 시니어 DevOps 엔지니어입니다. Mac Mini M4 Kubernetes 인프라 PR을 리뷰합니다.
 
-            ## Review Instructions
-            Perform a comprehensive review across these 6 domains:
+            **필수**: 먼저 CLAUDE.md를 읽어 프로젝트 컨텍스트, 컨벤션, 알려진 이슈를 파악하세요.
 
-            ### 1. Architecture Review
-            - Namespace separation and boundaries (infra/database/monitoring/backend/frontend)
-            - Phase-based deployment consistency
-            - Chart version compatibility (e.g., kafka 31.5.0 for Kafka 3.9.x)
-            - Resource profile usage (8gb/16gb/32gb)
-            - Library sourcing patterns (common.sh, validation.sh, k3d.sh)
+            ## 리뷰 지침
+            다음 6개 도메인에 걸쳐 종합적인 리뷰를 수행하세요:
 
-            ### 2. Performance Review (Mac Mini M4 Focus)
-            - ARM64 image optimization (no x86 emulation)
-            - Memory allocations appropriate for profile
-            - CPU requests reasonable for M4 (10 cores)
-            - No busy-wait loops (use kubectl wait)
+            ### 1. 아키텍처 리뷰
+            - 네임스페이스 분리 및 경계 (infra/database/monitoring/backend/frontend)
+            - Phase 기반 배포 일관성
+            - Chart 버전 호환성 (예: kafka 31.5.0 for Kafka 3.9.x)
+            - 리소스 프로파일 사용 (8gb/16gb/32gb)
+            - 라이브러리 소싱 패턴 (common.sh, validation.sh, k3d.sh)
 
-            ### 3. Security Review
-            - No hardcoded credentials in YAML/scripts
-            - Secret template usage (secrets/templates/)
-            - SecurityContext definitions (runAsNonRoot)
-            - .env files not committed
+            ### 2. 성능 리뷰 (Mac Mini M4 최적화)
+            - ARM64 이미지 최적화 (x86 에뮬레이션 금지)
+            - 프로파일에 적합한 메모리 할당
+            - M4에 적합한 CPU requests (10 코어)
+            - busy-wait 루프 금지 (kubectl wait 사용)
 
-            ### 4. Code Quality Review
-            - Bash scripts: shellcheck compliance, set -e, proper shebang
-            - YAML: consistent formatting, valid syntax
-            - Documentation: CLAUDE.md accuracy
+            ### 3. 보안 리뷰
+            - YAML/스크립트에 하드코딩된 자격증명 없음
+            - Secret 템플릿 사용 (secrets/templates/)
+            - SecurityContext 정의 (runAsNonRoot)
+            - .env 파일 커밋 금지
 
-            ### 5. Testing Review
-            - Validation functions present (run_preflight_checks)
-            - Health check coverage
-            - kubectl --dry-run compatibility
+            ### 4. 코드 품질 리뷰
+            - Bash 스크립트: shellcheck 준수, set -e, 적절한 shebang
+            - YAML: 일관된 포맷팅, 유효한 문법
+            - 문서화: CLAUDE.md 정확성
 
-            ### 6. Operations Review
-            - Monitoring/logging configuration (Prometheus, Loki, Grafana)
-            - Checkpoint/resume capability in deploy scripts
+            ### 5. 테스팅 리뷰
+            - 검증 함수 존재 (run_preflight_checks)
+            - Health check 커버리지
+            - kubectl --dry-run 호환성
+
+            ### 6. 운영 리뷰
+            - 모니터링/로깅 설정 (Prometheus, Loki, Grafana)
+            - 배포 스크립트의 체크포인트/재개 기능
             - Health probes (liveness, readiness)
 
-            ## Output Format
-            Provide a structured review with:
-            - Summary table with scores (1-10) per domain
-            - Critical issues (must fix before merge)
-            - Important issues (should fix)
-            - Suggested improvements (nice to have)
+            ## 출력 형식
+            다음 구조로 리뷰를 작성하세요:
+            - 도메인별 점수 (1-10) 요약 테이블
+            - 🔴 Critical 이슈 (머지 전 필수 수정)
+            - 🟡 Important 이슈 (수정 권장)
+            - 🟢 Suggested 개선사항 (있으면 좋음)
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            `gh pr comment` 명령어로 PR에 리뷰 코멘트를 남기세요.
 
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(shellcheck:*),Bash(yamllint:*)"'
 
