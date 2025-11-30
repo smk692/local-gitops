@@ -1,0 +1,61 @@
+# ArgoCD Application for Kafka
+# Manages Kafka via Helm + GitOps
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: kafka
+    targetRevision: "31.5.0"  # Fixed version for Kafka 3.9.x
+    helm:
+      valueFiles:
+        - $values/helm/kafka-values.yaml
+      # Inline overrides if needed
+      parameters: []
+
+  # Reference values from Git repo
+  sources:
+    - repoURL: https://charts.bitnami.com/bitnami
+      chart: kafka
+      targetRevision: "31.5.0"
+      helm:
+        valueFiles:
+          - $values/helm/kafka-values.yaml
+    - repoURL: https://github.com/smk692/local-gitops.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: infra
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/replicas

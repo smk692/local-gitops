@@ -1,0 +1,89 @@
+# ArgoCD Application for Monitoring Stack
+# Manages Loki + Grafana via Helm + GitOps
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: monitoring
+    app.kubernetes.io/part-of: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+
+  sources:
+    # Loki Stack (includes Grafana)
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki-stack
+      targetRevision: "2.10.2"
+      helm:
+        valueFiles:
+          - $values/helm/loki-values.yaml
+    # Values from Git repo
+    - repoURL: https://github.com/smk692/local-gitops.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+---
+# Prometheus Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: prometheus
+      targetRevision: "25.27.0"
+      helm:
+        valueFiles:
+          - $values/helm/prometheus-values.yaml
+    - repoURL: https://github.com/smk692/local-gitops.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

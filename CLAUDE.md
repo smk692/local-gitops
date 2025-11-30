@@ -764,14 +764,55 @@ argocd app get infrastructure
 
 ### Git 저장소 연결
 
-`k8s/argocd/apps/infra-app.yaml`에서 저장소 URL 수정:
+저장소: `https://github.com/smk692/local-gitops.git`
 
-```yaml
-spec:
-  source:
-    repoURL: https://github.com/YOUR_USERNAME/infra.git  # ← 실제 저장소로 변경
-    targetRevision: HEAD
-    path: k8s
+Application 파일들 (`k8s/argocd/apps/`):
+- `app-of-apps.yaml` - Root app (모든 앱을 관리)
+- `infra-app.yaml` - k8s/ 디렉토리 manifests
+- `kafka-app.yaml` - Kafka Helm chart
+- `monitoring-app.yaml` - Loki + Prometheus Helm charts
+
+### GitOps 워크플로우
+
+**GitHub에 푸시하면 Mac Mini에 자동 반영:**
+
+```
+1. 코드 수정 (helm/, k8s/ 디렉토리)
+2. git add && git commit && git push
+3. ArgoCD가 변경 감지 → 자동 동기화
+4. Mac Mini 클러스터에 반영
+```
+
+**App of Apps 패턴:**
+- `root-app`이 `k8s/argocd/apps/` 디렉토리 감시
+- 새 Application YAML 추가하면 자동으로 등록됨
+- Application 삭제하면 자동으로 제거됨
+
+### GitHub Webhook 설정 (즉시 반영)
+
+Webhook 없이도 ArgoCD가 3분마다 폴링하지만, 즉시 반영을 원하면:
+
+```bash
+# 1. Webhook Secret 확인
+grep GITHUB_WEBHOOK_SECRET secrets/.env
+
+# 2. GitHub 설정
+# https://github.com/smk692/local-gitops/settings/hooks
+# → Add webhook:
+#   - Payload URL: https://argocd.son.duckdns.org:8443/api/webhook
+#   - Content type: application/json
+#   - Secret: <.env 파일의 값>
+#   - Events: Just the push event
+```
+
+### 수동 동기화
+
+```bash
+# ArgoCD UI에서 Sync 버튼 또는 CLI:
+argocd app sync root-app
+argocd app sync infrastructure
+argocd app sync kafka
+argocd app sync monitoring
 ```
 
 ## Grafana 자동 프로비저닝

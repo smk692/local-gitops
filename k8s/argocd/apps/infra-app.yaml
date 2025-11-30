@@ -1,5 +1,6 @@
 # ArgoCD Application for Infrastructure Components
 # Manages infrastructure via GitOps
+# Repository: https://github.com/smk692/local-gitops
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -15,9 +16,8 @@ spec:
   project: infrastructure
 
   source:
-    # Update this to your Git repository
-    repoURL: https://github.com/YOUR_USERNAME/infra.git
-    targetRevision: HEAD
+    repoURL: https://github.com/smk692/local-gitops.git
+    targetRevision: main  # or master, depending on your default branch
     path: k8s
 
     # Directory configuration
@@ -31,13 +31,14 @@ spec:
 
   syncPolicy:
     automated:
-      prune: false  # Don't auto-delete for safety
-      selfHeal: true
+      prune: true        # Auto-delete removed resources
+      selfHeal: true     # Auto-sync when drift detected
       allowEmpty: false
     syncOptions:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
       - PruneLast=true
+      - ApplyOutOfSyncOnly=true
     retry:
       limit: 5
       backoff:

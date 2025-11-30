@@ -163,8 +163,19 @@ configs:
   # Repository credentials template
   credentialTemplates: {}
 
-  # Repositories
-  repositories: {}
+  # Repositories - GitHub repo for GitOps
+  repositories:
+    local-gitops:
+      url: https://github.com/smk692/local-gitops.git
+      name: local-gitops
+      type: git
+
+  # Webhook secret for GitHub (generate with: openssl rand -hex 32)
+  secret:
+    # Extra keys to add to argocd-secret
+    extra:
+      # GitHub webhook secret
+      webhook.github.secret: ""  # Set via --set or environment
 
 # ============================================================
 # Extra Objects (Applications)

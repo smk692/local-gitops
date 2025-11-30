@@ -128,17 +128,28 @@ install_argocd() {
 configure_argocd() {
     log_info "Configuring ArgoCD..."
 
-    # Apply AppProjects
-    local apps_dir="$PROJECT_ROOT/k8s/argocd/apps"
+    # Generate and apply webhook secret
+    setup_webhook_secret
 
-    if [[ -d "$apps_dir" ]]; then
-        # Apply app configurations
-        for app_file in "$apps_dir"/*.yaml; do
-            if [[ -f "$app_file" ]]; then
-                log_info "Applying: $(basename "$app_file")"
-                kubectl apply -f "$app_file" 2>/dev/null || log_warn "May need to update repo URL in $app_file"
-            fi
-        done
+    # Apply root-app (App of Apps pattern)
+    # This will automatically sync all other applications
+    local apps_dir="$PROJECT_ROOT/k8s/argocd/apps"
+    local root_app="$apps_dir/app-of-apps.yaml"
+
+    if [[ -f "$root_app" ]]; then
+        log_info "Applying App of Apps (root-app)..."
+        kubectl apply -f "$root_app"
+        log_info "Root app will automatically sync other applications from GitHub"
+    else
+        # Fallback: apply all apps individually
+        if [[ -d "$apps_dir" ]]; then
+            for app_file in "$apps_dir"/*.yaml; do
+                if [[ -f "$app_file" ]]; then
+                    log_info "Applying: $(basename "$app_file")"
+                    kubectl apply -f "$app_file" 2>/dev/null || log_warn "May need to update repo URL in $app_file"
+                fi
+            done
+        fi
     fi
 
     # Configure RBAC
@@ -146,6 +157,50 @@ configure_argocd() {
 
     print_success "ArgoCD configured"
     return 0
+}
+
+# ============================================================
+# Webhook Secret Setup
+# ============================================================
+
+setup_webhook_secret() {
+    log_info "Setting up GitHub webhook secret..."
+
+    local secrets_dir="$PROJECT_ROOT/secrets"
+    local env_file="$secrets_dir/.env"
+
+    # Check if webhook secret already exists
+    if grep -q "GITHUB_WEBHOOK_SECRET" "$env_file" 2>/dev/null; then
+        local webhook_secret=$(grep "GITHUB_WEBHOOK_SECRET" "$env_file" | cut -d'=' -f2)
+        log_info "Using existing webhook secret from .env"
+    else
+        # Generate new webhook secret
+        local webhook_secret=$(openssl rand -hex 32)
+        echo "GITHUB_WEBHOOK_SECRET=$webhook_secret" >> "$env_file"
+        log_info "Generated new webhook secret and saved to .env"
+    fi
+
+    # Apply webhook secret to cluster
+    kubectl create secret generic argocd-webhook-secret \
+        --namespace argocd \
+        --from-literal=webhook.github.secret="$webhook_secret" \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║                  GitHub Webhook Setup                         ║"
+    echo "╠══════════════════════════════════════════════════════════════╣"
+    echo "║                                                              ║"
+    echo "║  1. Go to: https://github.com/smk692/local-gitops/settings/hooks"
+    echo "║                                                              ║"
+    echo "║  2. Add webhook:                                             ║"
+    echo "║     Payload URL: https://argocd.son.duckdns.org:8443/api/webhook"
+    echo "║     Content type: application/json                           ║"
+    echo "║     Secret: $webhook_secret"
+    echo "║     Events: Just the push event                              ║"
+    echo "║                                                              ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
 }
 
 configure_argocd_rbac() {
