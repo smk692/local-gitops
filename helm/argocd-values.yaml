@@ -178,41 +178,8 @@ configs:
       webhook.github.secret: ""  # Set via --set or environment
 
 # ============================================================
-# Extra Objects (Applications)
+# Extra Objects - MOVED TO k8s/argocd/projects/
 # ============================================================
-extraObjects:
-  # AppProject for infrastructure
-  - apiVersion: argoproj.io/v1alpha1
-    kind: AppProject
-    metadata:
-      name: infrastructure
-      namespace: argocd
-    spec:
-      description: Infrastructure components
-      sourceRepos:
-        - '*'
-      destinations:
-        - namespace: '*'
-          server: https://kubernetes.default.svc
-      clusterResourceWhitelist:
-        - group: '*'
-          kind: '*'
-
-  # AppProject for applications
-  - apiVersion: argoproj.io/v1alpha1
-    kind: AppProject
-    metadata:
-      name: applications
-      namespace: argocd
-    spec:
-      description: Application deployments
-      sourceRepos:
-        - '*'
-      destinations:
-        - namespace: backend
-          server: https://kubernetes.default.svc
-        - namespace: frontend
-          server: https://kubernetes.default.svc
-      clusterResourceWhitelist:
-        - group: ''
-          kind: Namespace
+# AppProjects are applied separately after ArgoCD installation
+# to avoid CRD timing issues with Helm
+extraObjects: []

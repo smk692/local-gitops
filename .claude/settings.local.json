@@ -22,7 +22,13 @@
       "mcp__serena__list_memories",
       "mcp__serena__activate_project",
       "mcp__serena__check_onboarding_performed",
-      "mcp__serena__list_dir"
+      "mcp__serena__list_dir",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(helm list:*)",
+      "Bash(git -C /Users/sonmingi/Desktop/infra remote:*)",
+      "Bash(git push:*)",
+      "Bash(helm upgrade:*)"
     ],
     "deny": [],
     "ask": []
