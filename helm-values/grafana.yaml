@@ -1,5 +1,6 @@
 # Grafana Helm Values
-adminPassword: admin
+# adminPassword는 Kubernetes Secret으로 관리
+# kubectl create secret generic grafana-admin --from-literal=admin-password=<PASSWORD> -n observability
 
 persistence:
   enabled: false
