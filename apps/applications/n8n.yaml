@@ -13,21 +13,28 @@ spec:
     targetRevision: "1.*"
     helm:
       valuesObject:
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-        pvc:
-          enabled: true
-          size: 1Gi
-          accessModes:
-            - ReadWriteOnce
-        config:
-          database:
-            type: sqlite
+        # Database: SQLite (기본)
+        db:
+          type: sqlite
+        # Main node 설정
+        main:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          persistence:
+            enabled: true
+            size: 1Gi
+        # Worker mode: regular (main node가 처리)
+        worker:
+          mode: regular
+        webhook:
+          mode: regular
+        # Timezone
+        timezone: "Asia/Seoul"
   destination:
     server: https://kubernetes.default.svc
     namespace: applications
