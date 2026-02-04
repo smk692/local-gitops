@@ -38,3 +38,10 @@ backend:
 
 gateway:
   enabled: false
+
+# 캐시 비활성화 (메모리 절약)
+chunksCache:
+  enabled: false
+
+resultsCache:
+  enabled: false
