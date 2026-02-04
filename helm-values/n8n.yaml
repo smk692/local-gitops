@@ -1,22 +1,23 @@
 # n8n Helm Values (community-charts)
-n8n:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+# https://github.com/community-charts/helm-charts/tree/main/charts/n8n
 
-persistence:
-  enabled: false
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
-# 내장 DB 사용 (SQLite)
-# 외부 PostgreSQL 사용 시 아래 주석 해제
-# postgresql:
-#   enabled: false
-# config:
-#   database:
-#     type: postgresdb
-#     postgresdb:
-#       host: postgresql.infrastructure.svc
+# PVC 설정
+pvc:
+  enabled: true
+  size: 1Gi
+  accessModes:
+    - ReadWriteOnce
+
+# 환경 변수
+config:
+  # SQLite 사용 (기본)
+  database:
+    type: sqlite
