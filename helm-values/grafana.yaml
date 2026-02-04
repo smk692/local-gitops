@@ -1,0 +1,31 @@
+# Grafana Helm Values
+adminPassword: admin
+
+persistence:
+  enabled: false
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.observability.svc:80
+        access: proxy
+        isDefault: true
+      - name: Loki
+        type: loki
+        url: http://loki.observability.svc:3100
+        access: proxy
+      - name: Tempo
+        type: tempo
+        url: http://tempo.observability.svc:3100
+        access: proxy
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redpanda
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://charts.redpanda.com
+    chart: redpanda
+    targetRevision: "5.*"
+    helm:
+      valueFiles:
+        - https://raw.githubusercontent.com/smk692/local-gitops/main/helm-values/redpanda.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: infrastructure
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

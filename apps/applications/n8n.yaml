@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: n8n
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://8gears.github.io/n8n-helm-chart
+    chart: n8n
+    targetRevision: "0.*"
+    helm:
+      valueFiles:
+        - https://raw.githubusercontent.com/smk692/local-gitops/main/helm-values/n8n.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: applications
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

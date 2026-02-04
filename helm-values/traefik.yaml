@@ -1,0 +1,23 @@
+# Traefik Helm Values
+service:
+  type: LoadBalancer
+
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+  websecure:
+    port: 8443
+    exposedPort: 443
+
+ingressRoute:
+  dashboard:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

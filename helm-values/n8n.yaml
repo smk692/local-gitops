@@ -1,0 +1,22 @@
+# n8n Helm Values
+persistence:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# 외부 PostgreSQL/Redis 사용 시
+# postgresql:
+#   enabled: false
+# redis:
+#   enabled: false
+# extraEnv:
+#   - name: DB_TYPE
+#     value: postgresdb
+#   - name: DB_POSTGRESDB_HOST
+#     value: postgresql.infrastructure.svc
