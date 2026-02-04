@@ -1,22 +1,22 @@
-# n8n Helm Values
+# n8n Helm Values (community-charts)
+n8n:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 persistence:
   enabled: false
 
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-
-# 외부 PostgreSQL/Redis 사용 시
+# 내장 DB 사용 (SQLite)
+# 외부 PostgreSQL 사용 시 아래 주석 해제
 # postgresql:
 #   enabled: false
-# redis:
-#   enabled: false
-# extraEnv:
-#   - name: DB_TYPE
-#     value: postgresdb
-#   - name: DB_POSTGRESDB_HOST
-#     value: postgresql.infrastructure.svc
+# config:
+#   database:
+#     type: postgresdb
+#     postgresdb:
+#       host: postgresql.infrastructure.svc

@@ -7,7 +7,9 @@ resources:
     cores: 1
   memory:
     container:
-      max: 1Gi
+      max: 512Mi  # 메모리 축소
+    redpanda:
+      memory: 256Mi  # 실제 Redpanda 사용 메모리
 
 storage:
   persistentVolume:
@@ -15,3 +17,10 @@ storage:
 
 console:
   enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

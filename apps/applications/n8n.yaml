@@ -8,9 +8,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://8gears.github.io/n8n-helm-chart
+    repoURL: https://community-charts.github.io/helm-charts
     chart: n8n
-    targetRevision: "0.*"
+    targetRevision: "1.*"
     helm:
       valueFiles:
         - https://raw.githubusercontent.com/smk692/local-gitops/main/helm-values/n8n.yaml
