@@ -12,8 +12,22 @@ spec:
     chart: n8n
     targetRevision: "1.*"
     helm:
-      valueFiles:
-        - https://raw.githubusercontent.com/smk692/local-gitops/main/helm-values/n8n.yaml
+      valuesObject:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        pvc:
+          enabled: true
+          size: 1Gi
+          accessModes:
+            - ReadWriteOnce
+        config:
+          database:
+            type: sqlite
   destination:
     server: https://kubernetes.default.svc
     namespace: applications
