@@ -1,5 +1,6 @@
 # Prometheus Helm Values
 server:
+  retention: "3d"  # 3일 보존 (기존 15d → 3d)
   persistentVolume:
     enabled: false
   resources:
